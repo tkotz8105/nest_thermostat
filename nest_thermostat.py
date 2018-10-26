@@ -57,6 +57,23 @@ def convert_my_iso_8601(iso_8601, tz_info):
 #
 def main():
 #
+
+	sql_single = 'INSERT INTO thermostat(datetime, last_connect, online, device_serial,'+ \
+	'device_name, device_where, label, mode, ambient_temperature, temperature_scale,'+ \
+	'humidity, device_min_temperature, device_max_temperature, hvac_state, hvac_fan,' + \
+	'hvac_emergency_heat, target_temperature, eco_temperature_high, eco_temperature_low,'+ \
+	'device_is_locked, locked_temperature_low, locked_temperature_high, has_leaf,'+ \
+	'device_can_heat, device_can_cool, device_has_humidifier, device_has_dehumidifier,'+ \
+	'device_has_fan, device_has_hot_water_control, device_postal_code)'+ \
+	' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+	sql_dual = 'INSERT INTO thermostat(datetime, last_connect, online, device_serial,'+ \
+	'device_name, device_where, label, mode, ambient_temperature, temperature_scale,'+ \
+	'humidity, device_min_temperature, device_max_temperature, hvac_state, hvac_fan,' + \
+	'hvac_emergency_heat, target_temperature, target_lo_temperature, target_hi_temperature, eco_temperature_high,'+ \
+	'eco_temperature_low, device_is_locked, locked_temperature_low, locked_temperature_high,'+ \
+	'has_leaf, device_can_heat, device_can_cool, device_has_humidifier, device_has_dehumidifier,'+ \
+	'device_has_fan, device_has_hot_water_control, device_postal_code)'+ \
+	' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
 # Get required client info for access to Nest API
 	access_token_cache_file = os.path.expanduser('~')+'/nest/nest.json'
 	nestlog_json_file = os.path.expanduser('~')+'/nest/nestlog.json'
@@ -81,15 +98,6 @@ def main():
 		# Access advanced device properties & create SQL to store Nest Thermostat Elements in SQLite DB
 		for device in structure.thermostats:
 			last_connect=convert_my_iso_8601(device.last_connection, get_localzone())	#convert Nest last_connection to local time
-			sql = 'INSERT INTO thermostat'
-			sql = sql + '(datetime, last_connect, online, device_serial, device_name, device_where, label,'+ \
-			'mode, ambient_temperature, temperature_scale, humidity, device_min_temperature, device_max_temperature,'+ \
-			'hvac_state, hvac_fan, hvac_emergency_heat, target_temperature, eco_temperature_high, eco_temperature_low,'+ \
-			'device_is_locked, locked_temperature_low, locked_temperature_high, has_leaf,'+ \
-			'device_can_heat, device_can_cool, device_has_humidifier, device_has_dehumidifier,'+ \
-			'device_has_fan, device_has_hot_water_control, device_postal_code)'
-			sql = sql + ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-#			print sql
 #
 # Get current system time and use as time stamp for database record... convert to Epoch Time
 			time_now=dt.datetime.utcnow()
@@ -97,16 +105,50 @@ def main():
 #
 # Convert last_connect time to Epoch time
 			last_connect=cvt_to_local(int((last_connect - dt.datetime(1970,1,1)).total_seconds()))
+			
 #
 # Open database and execute SQL statement to write Nest Thermostat data
 			conn=sqlite3.connect(file_path)
 			cur=conn.cursor()
-			cur.execute(sql,(sys_time, last_connect, device.online, device._serial, device.name, device.where, device.label,
-				device.mode, device.temperature, device.temperature_scale, device.humidity, device.min_temperature, device.max_temperature,
-				device.hvac_state, device.fan, device.is_using_emergency_heat, device.target, device.eco_temperature.high, device.eco_temperature.low,
-				device.is_locked, device.locked_temperature.low, device.locked_temperature.high, device.has_leaf,
-				device.can_heat, device.can_cool, device.has_humidifier, device.has_dehumidifier,
-				device.has_fan, device.has_hot_water_control, device.postal_code))
+			# print (sys_time, last_connect, device.online, device._serial, device.name, device.where, device.label,
+				# device.mode, device.temperature, device.temperature_scale, device.humidity, device.min_temperature, device.max_temperature,
+				# device.hvac_state, device.fan, device.is_using_emergency_heat, device.target, device.eco_temperature.high, device.eco_temperature.low,
+				# device.is_locked, device.locked_temperature.low, device.locked_temperature.high, device.has_leaf,
+				# device.can_heat, device.can_cool, device.has_humidifier, device.has_dehumidifier,
+				# device.has_fan, device.has_hot_water_control, device.postal_code)
+
+			if (device.mode == 'heat-cool'):
+				target_lo=device.target[0]
+				target_hi=device.target[1]
+#				print (target_lo, target_hi, device.hvac_state)
+				if (device.hvac_state=='heating'):
+					target_temp=device.target[0]
+				elif (device.hvac_state == 'cooling'):
+					target_temp=device.target[1]
+				elif (device.hvac_state == 'off'):
+					target_split=(device.target[0]+device.target[1])/2
+					if(device.temperature-10 <= target_split):
+						target_temp=device.target[0]
+					else:
+						target_temp=device.target[1]
+				sql=sql_dual
+#				print (target_lo, target_hi)	
+				cur.execute(sql,(sys_time, last_connect, device.online, device._serial, device.name, device.where, device.label,
+					device.mode, device.temperature, device.temperature_scale, device.humidity, device.min_temperature, device.max_temperature,
+					device.hvac_state, device.fan, device.is_using_emergency_heat, target_temp, target_lo, 
+					target_hi, device.eco_temperature.high, device.eco_temperature.low,
+					device.is_locked, device.locked_temperature.low, device.locked_temperature.high, 
+					device.has_leaf, device.can_heat, device.can_cool, device.has_humidifier, 
+					device.has_dehumidifier, device.has_fan, device.has_hot_water_control, device.postal_code))
+			else :
+				sql=sql_single
+				cur.execute(sql,(sys_time, last_connect, device.online, device._serial, device.name, device.where, device.label,
+					device.mode, device.temperature, device.temperature_scale, device.humidity, device.min_temperature, device.max_temperature,
+					device.hvac_state, device.fan, device.is_using_emergency_heat, device.target, 
+					device.eco_temperature.high, device.eco_temperature.low,
+					device.is_locked, device.locked_temperature.low, device.locked_temperature.high,
+					device.has_leaf, device.can_heat, device.can_cool, device.has_humidifier,
+					device.has_dehumidifier, device.has_fan, device.has_hot_water_control, device.postal_code))
 			conn.commit()	#Commit new record
 			conn.close()	#Close Database
 	return 0
